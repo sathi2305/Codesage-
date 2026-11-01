@@ -1,0 +1,6 @@
+{
+  "name": "CodeSage AI",
+  "description": "Evidence-based AI codebase intelligence platform that explains software architecture decisions with verifiable source citations, interactive knowledge graphs, dependency blast-radius analysis, and Indian-language support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
