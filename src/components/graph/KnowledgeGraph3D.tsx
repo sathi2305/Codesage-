@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { ExternalLink, Maximize2, Pause, Play, RotateCcw, X } from 'lucide-react';
+import { Camera, ExternalLink, Maximize2, Pause, Play, RotateCcw, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { GraphNode, RepositoryGraph } from '../../types';
 
@@ -27,6 +27,7 @@ export const KnowledgeGraph3D: React.FC<KnowledgeGraph3DProps> = ({
 }) => {
   const navigate = useNavigate();
   const mountRef = useRef<HTMLDivElement | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [isRotating, setIsRotating] = useState(true);
   const isRotatingRef = useRef(isRotating);
@@ -49,11 +50,13 @@ export const KnowledgeGraph3D: React.FC<KnowledgeGraph3DProps> = ({
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: true,
+      preserveDrawingBuffer: true,
       powerPreference: 'high-performance',
     });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    rendererRef.current = renderer;
     container.appendChild(renderer.domElement);
 
     // 2. Lights
@@ -261,6 +264,7 @@ export const KnowledgeGraph3D: React.FC<KnowledgeGraph3DProps> = ({
         container.removeChild(renderer.domElement);
       }
       renderer.dispose();
+      rendererRef.current = null;
       nodeGeometries.forEach((g) => g.dispose());
       nodeMaterials.forEach((m) => m.dispose());
       edgeGeo.dispose();
@@ -268,12 +272,27 @@ export const KnowledgeGraph3D: React.FC<KnowledgeGraph3DProps> = ({
     };
   }, [graph]);
 
+  const handleSnapshot = () => {
+    if (!rendererRef.current) return;
+    try {
+      const dataUrl = rendererRef.current.domElement.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `${graph.repoId || 'codesage'}-3d-galaxy-snapshot.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      console.error('Failed to capture 3D frame:', e);
+    }
+  };
+
   return (
     <div className={`relative overflow-hidden rounded-xl bg-[#020817] border border-slate-800 ${heightClass}`}>
       <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
 
       {/* Floating 3D Controls */}
-      <div className="absolute bottom-3 left-4 flex items-center gap-2">
+      <div className="absolute bottom-3 left-4 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setIsRotating((r) => !r)}
@@ -281,6 +300,16 @@ export const KnowledgeGraph3D: React.FC<KnowledgeGraph3DProps> = ({
         >
           {isRotating ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 text-cyan-300" />}
           <span>{isRotating ? 'Pause Orbit' : 'Rotate Orbit'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleSnapshot}
+          className="px-2.5 py-1.5 rounded-lg bg-[#071A35]/90 hover:bg-[#0A2042] border border-cyan-500/40 text-xs text-cyan-300 flex items-center gap-1.5 cursor-pointer backdrop-blur-md"
+          title="Snapshot current 3D view as PNG image"
+        >
+          <Camera className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Capture 3D PNG</span>
         </button>
 
         <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">

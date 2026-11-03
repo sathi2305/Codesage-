@@ -2,9 +2,14 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  ChevronDown,
   Database,
+  Download,
   ExternalLink,
+  FileImage,
+  ImageIcon,
   Layers,
+  Loader2,
   Network,
   Play,
   RotateCcw,
@@ -14,6 +19,12 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useCodeSage } from '../context/CodeSageContext';
+import {
+  downloadBlob,
+  downloadTextAsFile,
+  exportApiFlowToSvg,
+  svgToPngBlob,
+} from '../utils/graphExporter';
 
 interface ApiPipelineHop {
   layer: 'Client' | 'API Route' | 'Middleware' | 'Service' | 'Data Store';
@@ -181,10 +192,12 @@ const SAMPLE_TRACES: EndpointTrace[] = [
 
 export const ApiFlowPage: React.FC = () => {
   const navigate = useNavigate();
-  const { activeRepo } = useCodeSage();
+  const { activeRepo, triggerShortcutToast } = useCodeSage();
   const [selectedTraceId, setSelectedTraceId] = useState<string>(SAMPLE_TRACES[0].id);
   const [activeStep, setActiveStep] = useState<number>(0);
   const [isPlayingFlow, setIsPlayingFlow] = useState<boolean>(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState<boolean>(false);
+  const [isExporting, setIsExporting] = useState<'png' | 'svg' | null>(null);
 
   const activeTrace =
     SAMPLE_TRACES.find((t) => t.id === selectedTraceId) || SAMPLE_TRACES[0];
@@ -202,6 +215,43 @@ export const ApiFlowPage: React.FC = () => {
         setIsPlayingFlow(false);
       }
     }, 1100);
+  };
+
+  const endpointSlug = activeTrace.path.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+
+  const handleExportSvg = () => {
+    setIsExporting('svg');
+    setExportMenuOpen(false);
+    try {
+      const svg = exportApiFlowToSvg(
+        activeTrace,
+        activeRepo?.fullName || activeRepo?.name || 'Repository'
+      );
+      downloadTextAsFile(svg, `api-flow${endpointSlug}.svg`);
+      triggerShortcutToast('Exported API Flow SVG', '.SVG');
+    } catch (err) {
+      console.error('Failed to export API flow SVG:', err);
+    } finally {
+      setIsExporting(null);
+    }
+  };
+
+  const handleExportPng = async () => {
+    setIsExporting('png');
+    setExportMenuOpen(false);
+    try {
+      const svg = exportApiFlowToSvg(
+        activeTrace,
+        activeRepo?.fullName || activeRepo?.name || 'Repository'
+      );
+      const blob = await svgToPngBlob(svg, 2);
+      downloadBlob(blob, `api-flow${endpointSlug}.png`);
+      triggerShortcutToast('Exported High-Res PNG (2x)', '.PNG');
+    } catch (err) {
+      console.error('Failed to export API flow PNG:', err);
+    } finally {
+      setIsExporting(null);
+    }
   };
 
   return (
@@ -222,15 +272,67 @@ export const ApiFlowPage: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handlePlayFlow}
-          disabled={isPlayingFlow}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#2563FF] hover:bg-[#1d4ed8] text-xs font-medium text-white transition-all cursor-pointer shadow-lg shadow-[#2563FF]/30"
-        >
-          <Play className="w-3.5 h-3.5 fill-white" />
-          <span>{isPlayingFlow ? 'Tracing Packet...' : 'Animate Flow'}</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Export Flow Diagram Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setExportMenuOpen((open) => !open)}
+              disabled={isExporting !== null}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#071A35] hover:bg-[#0A2042] border border-cyan-500/40 text-xs font-medium text-cyan-300 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {isExporting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+              ) : (
+                <Download className="w-3.5 h-3.5 text-cyan-400" />
+              )}
+              <span>{isExporting ? 'Exporting...' : 'Export Flow Diagram'}</span>
+              <ChevronDown className="w-3 h-3 text-cyan-400 opacity-80" />
+            </button>
+
+            {exportMenuOpen && (
+              <div className="absolute right-0 mt-1.5 w-60 rounded-xl border border-slate-700 bg-[#041126] p-1.5 shadow-2xl z-30 space-y-1">
+                <div className="px-2.5 py-1 text-[10px] font-mono uppercase text-slate-400 font-bold tracking-wider">
+                  Documentation Export
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleExportPng}
+                  className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-left hover:bg-[#0A2042] transition-colors cursor-pointer group"
+                >
+                  <ImageIcon className="w-4 h-4 text-cyan-300 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                  <div>
+                    <div className="text-xs font-semibold text-white">High-Res PNG Image</div>
+                    <div className="text-[11px] text-slate-400">2x Retina image for architecture docs</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportSvg}
+                  className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-left hover:bg-[#0A2042] transition-colors cursor-pointer group"
+                >
+                  <FileImage className="w-4 h-4 text-violet-300 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                  <div>
+                    <div className="text-xs font-semibold text-white">Scalable Vector SVG</div>
+                    <div className="text-[11px] text-slate-400">Lossless vector graphic for READMEs</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={handlePlayFlow}
+            disabled={isPlayingFlow}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#2563FF] hover:bg-[#1d4ed8] text-xs font-medium text-white transition-all cursor-pointer shadow-lg shadow-[#2563FF]/30"
+          >
+            <Play className="w-3.5 h-3.5 fill-white" />
+            <span>{isPlayingFlow ? 'Tracing Packet...' : 'Animate Flow'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Endpoint Selector Chips */}
